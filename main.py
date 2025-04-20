@@ -11,7 +11,6 @@ from fastapi.security.api_key import APIKeyHeader
 import secrets
 import os
 import hashlib
-import re, json
 import sys
 import csv
 import copy
@@ -53,7 +52,8 @@ class Event:
     end_time: datetime
     location: str = ""
     attendees: list[Attendee]
-    
+
+
 @app.get("/bullet")
 def get_calendar_file(response: Response):
     file_path = "Bullet Sailing Schedule.ics"
@@ -64,6 +64,7 @@ def get_calendar_file(response: Response):
         media_type="text/calendar",
         filename="bullet.ics"
     )
+
 
 @app.post("/update", status_code=204)
 async def update(
@@ -78,7 +79,7 @@ async def update(
     if not secrets.compare_digest(api_key_header, API_KEY_VALUE):
         response.status_code = status.HTTP_401_UNAUTHORIZED
         return "Failure"
-            
+
     csv = csvReader(data.calendar)
     events = parseSchedule(csv)
     createCalendar(events)
@@ -105,15 +106,17 @@ def parseDate(contents: str):
 def parseTime(contents: str):
     # "12:30"
     try:    
-        return dateparse(contents).time()
-    except ParserError:
+        clip = contents.find("GMT")
+        time = dateparse(contents[:clip]).time()
+        return time
+    except ParserError as e:
         return dateparse("12:30pm").time()
 
 
 def getCrew(row: list[str]):
     crew: list[Attendee] = []
     
-    for cell in row[4:13]:
+    for cell in row[5:14]:
         crew.append(Attendee(cell))
         
     return crew
@@ -142,13 +145,13 @@ def parseEvent(row: list[str], date: datetime, crew: list[Attendee]) -> Event:
     
     event.name = row[0]
     event.start_time = date
-    event.end_time = date + timedelta(hours=6)
+    event.end_time = date.replace(hour=17, minute=30)
     event.location = """Sandringham Yacht Club
-    36 Jetty Rd, Sandringham VIC 3191, Australia"""
+36 Jetty Rd, Sandringham VIC 3191, Australia"""
     
     people = copy.deepcopy(crew)
 
-    for i, available in enumerate(row[4:4 + len(crew)]):
+    for i, available in enumerate(row[5:5 + len(crew)]):
         people[i].status = Status(available.strip())
         
     event.attendees = people
@@ -161,7 +164,6 @@ def createCalendar(
     name: str = "Bullet Sailing Schedule",
     filter: str | None = None
 ):
-
     cal = ical.Calendar()
     cal.add("prodid", f"-//{name}//Calendar//EN")
     cal.add("version", "2.0")
